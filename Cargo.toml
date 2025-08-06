@@ -1,0 +1,20 @@
+[package]
+name = "codepilot"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+dotenv = "0.15"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+swarms-rs = "0.1.9"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+reqwest = { version = "0.11", features = ["json"] }
+crossterm = "0.27"
+tui = "0.19"
+ratatui = "0.24"
+regex = "1.10"
