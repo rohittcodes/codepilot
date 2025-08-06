@@ -119,9 +119,9 @@ graph LR
 
     %% Tool Execution Flow
     subgraph "Tool Execution"
-        ToolDiscovery[Tool Discovery<br/>MCP get_tools()]
-        ToolScoring[Tool Scoring<br/>calculate_tool_relevance_score()]
-        ToolExecution[Tool Execution<br/>execute_tool()]
+        ToolDiscovery[Tool Discovery<br/>MCP get_tools]
+        ToolScoring[Tool Scoring<br/>calculate_tool_relevance_score]
+        ToolExecution[Tool Execution<br/>execute_tool]
     end
 
     %% Response Flow
@@ -132,8 +132,8 @@ graph LR
 
     %% Data Storage
     subgraph "Data"
-        Messages[Message History<br/>Vec<String>]
-        Tools[Tool Cache<br/>Vec<ToolInfo>]
+        Messages[Message History<br/>Vec of String]
+        Tools[Tool Cache<br/>Vec of ToolInfo]
         Config[Configuration<br/>Config struct]
     end
 
@@ -217,7 +217,7 @@ graph TB
 
     %% AI/ML Technologies
     subgraph "AI/ML Technologies"
-        Swarms[Swarms-rs<br/>Agent Framework]
+        Swarms[swarms-rs<br/>Agent Framework]
         OpenAI[OpenAI API<br/>GPT-4 Turbo]
     end
 
