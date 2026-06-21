@@ -75,6 +75,21 @@ fn render_input(f: &mut Frame, area: Rect, app: &AppState) {
         (MUTED, " Press 'i' to describe a code task ")
     };
 
+    // Content rows available inside the border + horizontal padding.
+    let visible_rows = area.height.saturating_sub(2);
+
+    let before_cursor = &app.input_text[..app.cursor_position.min(app.input_text.len())];
+    let cursor_row = before_cursor.matches('\n').count() as u16;
+    let cursor_col = before_cursor.rsplit('\n').next().unwrap_or("").chars().count() as u16;
+
+    // Auto-scroll so the cursor's line is always inside the box, instead of
+    // letting it run off the bottom — past which the terminal cursor would
+    // land outside this widget's area entirely (ratatui clips rendered
+    // content to a widget's Rect, but not the separate global terminal
+    // cursor position, so an unclamped row visually overlaps whatever is
+    // drawn below, e.g. the Activity panel).
+    let scroll_row = cursor_row.saturating_sub(visible_rows.saturating_sub(1));
+
     let input = Paragraph::new(app.input_text.clone())
         .style(Style::default().fg(FG))
         .block(
@@ -85,15 +100,15 @@ fn render_input(f: &mut Frame, area: Rect, app: &AppState) {
                 .title(Span::styled(label, Style::default().fg(border_color).add_modifier(Modifier::BOLD)))
                 .border_style(Style::default().fg(border_color)),
         )
-        .wrap(Wrap { trim: true });
+        .wrap(Wrap { trim: true })
+        .scroll((scroll_row, 0));
 
     f.render_widget(input, area);
 
     if app.is_input_mode {
-        let before_cursor = &app.input_text[..app.cursor_position.min(app.input_text.len())];
-        let row = before_cursor.matches('\n').count() as u16;
-        let col = before_cursor.rsplit('\n').next().unwrap_or("").chars().count() as u16;
-        f.set_cursor_position((area.x + col + 2, area.y + 1 + row));
+        let cursor_row_in_box = (cursor_row - scroll_row).min(visible_rows.saturating_sub(1));
+        let cursor_col = cursor_col.min(area.width.saturating_sub(4));
+        f.set_cursor_position((area.x + cursor_col + 2, area.y + 1 + cursor_row_in_box));
     }
 }
 
