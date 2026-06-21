@@ -1,5 +1,6 @@
 // CLI application module
 pub mod app;
+pub mod persistence;
 pub mod ui;
 pub mod state;
 

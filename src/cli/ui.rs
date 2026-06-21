@@ -1,12 +1,26 @@
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
+    text::{Line, Span},
+    widgets::{Block, BorderType, Borders, List, ListItem, Padding, Paragraph, Wrap},
     Frame,
 };
-use crate::cli::state::{AppState, ConnectionStatus};
+use crate::cli::state::AppState;
+
+// Tokyo-night-ish accent palette.
+const ACCENT: Color = Color::Rgb(122, 162, 247); // blue
+const ACCENT_2: Color = Color::Rgb(187, 154, 247); // purple
+const OK: Color = Color::Rgb(158, 206, 106); // green
+const WARN: Color = Color::Rgb(224, 175, 104); // orange
+const ERR: Color = Color::Rgb(247, 118, 142); // red
+const MUTED: Color = Color::Rgb(86, 95, 137); // dim gray-blue
+const FG: Color = Color::Rgb(192, 202, 245); // soft white
 
 pub fn render(f: &mut Frame, app: &AppState) {
+    if app.show_details {
+        render_details(f, app);
+        return;
+    }
     if app.show_help {
         render_help(f);
         return;
@@ -14,260 +28,270 @@ pub fn render(f: &mut Frame, app: &AppState) {
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .margin(2)
+        .margin(1)
         .constraints(
             [
                 Constraint::Length(3),
-                Constraint::Min(10),
-                Constraint::Length(5),
-                Constraint::Min(8),
+                Constraint::Length(6),
+                Constraint::Min(6),
+                Constraint::Length(1),
             ]
             .as_ref(),
         )
-        .split(f.size());
+        .split(f.area());
 
     render_title(f, chunks[0]);
-    render_services(f, chunks[1], app);
-    render_input(f, chunks[2], app);
-    render_messages(f, chunks[3], app);
+    render_input(f, chunks[1], app);
+    render_messages(f, chunks[2], app);
+    render_status_bar(f, chunks[3], app);
 }
 
 fn render_title(f: &mut Frame, area: Rect) {
-    let title = Paragraph::new("🚀 CodePilot - Multi-Agent MCP System")
-        .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
-        .alignment(ratatui::layout::Alignment::Center)
-        .block(Block::default().borders(Borders::NONE));
-    
-    let instructions = Paragraph::new("Enter to confirm - Esc to exit")
-        .style(Style::default().fg(Color::Gray))
-        .alignment(ratatui::layout::Alignment::Left);
-    
-    let title_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Length(1)].as_ref())
-        .split(area);
-    
-    f.render_widget(title, title_chunks[0]);
-    f.render_widget(instructions, title_chunks[1]);
-}
+    let title = Paragraph::new(Line::from(vec![
+        Span::styled("›› ", Style::default().fg(ACCENT_2).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "CodePilot",
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(" — JS/TS coding agent", Style::default().fg(MUTED)),
+    ]))
+    .alignment(Alignment::Center)
+    .block(
+        Block::default()
+            .borders(Borders::BOTTOM)
+            .border_type(BorderType::Plain)
+            .border_style(Style::default().fg(MUTED)),
+    );
 
-fn render_services(f: &mut Frame, area: Rect, app: &AppState) {
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(33), Constraint::Percentage(33), Constraint::Percentage(34)].as_ref())
-        .split(area);
-
-    for (i, service) in app.services.iter().enumerate() {
-        let is_selected = i == app.selected_service;
-        let style = if is_selected {
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(Color::White)
-        };
-
-        let status_icon = match service.status {
-            ConnectionStatus::Connected => "🟢",
-            ConnectionStatus::Failed(_) => "🔴",
-            ConnectionStatus::Pending => "🟡",
-            ConnectionStatus::NotTested => "⚪",
-        };
-
-        let title = format!("{} {} {}", status_icon, service.name, if service.is_expanded { "▼" } else { "▶" });
-        
-        let mut items = vec![ListItem::new(title).style(style)];
-        
-        if service.is_expanded {
-            let scroll_pos = app.service_scroll.get(i).copied().unwrap_or(0);
-            let visible_tools = service.tools.iter().skip(scroll_pos).take(8); // Show max 8 tools
-            
-            for (j, tool) in visible_tools.enumerate() {
-                let actual_index = scroll_pos + j;
-                let tool_is_selected = app.selected_tool == Some(actual_index) && i == app.selected_service;
-                let tool_style = if tool_is_selected {
-                    Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default().fg(Color::Gray)
-                };
-
-                let tool_status_icon = match tool.status {
-                    ConnectionStatus::Connected => "🟢",
-                    ConnectionStatus::Failed(_) => "🔴",
-                    ConnectionStatus::Pending => "🟡",
-                    ConnectionStatus::NotTested => "⚪",
-                };
-
-                // Truncate long tool names for better display
-                let tool_name = if tool.name.len() > 18 {
-                    format!("{}...", &tool.name[..18])
-                } else {
-                    tool.name.clone()
-                };
-
-                let tool_text = format!("  {} {}", tool_status_icon, tool_name);
-                items.push(ListItem::new(tool_text).style(tool_style));
-            }
-            
-            // Add scroll indicator if there are more tools
-            if service.tools.len() > 8 {
-                let scroll_indicator = if scroll_pos > 0 && scroll_pos + 8 < service.tools.len() {
-                    "  ↕️  More tools..."
-                } else if scroll_pos > 0 {
-                    "  ↑  End of list"
-                } else {
-                    "  ↓  Scroll for more"
-                };
-                items.push(ListItem::new(scroll_indicator).style(Style::default().fg(Color::Yellow)));
-            }
-        }
-
-        let list = List::new(items)
-            .block(Block::default().borders(Borders::ALL).title(format!(" {} ", service.name.clone())))
-            .style(Style::default().fg(Color::White))
-            .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD));
-
-        f.render_widget(list, chunks[i]);
-    }
+    f.render_widget(title, area);
 }
 
 fn render_input(f: &mut Frame, area: Rect, app: &AppState) {
-    let input_prompt = if app.is_input_mode {
-        "Input Mode - Type your question (Esc to exit, Enter to submit)"
+    let (border_color, label) = if app.is_input_mode {
+        (ACCENT_2, " Describe a task · Enter to run · Shift+Enter for newline · Esc to cancel ")
+    } else if app.is_processing {
+        (WARN, " Working… ")
     } else {
-        "Ask your question (Press 'i' to enter input mode)"
+        (MUTED, " Press 'i' to describe a code task ")
     };
-    
+
     let input = Paragraph::new(app.input_text.clone())
-        .style(Style::default().fg(Color::White))
+        .style(Style::default().fg(FG))
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(input_prompt)
-                .style(if app.is_input_mode {
-                    Style::default().fg(Color::Yellow)
-                } else {
-                    Style::default().fg(Color::White)
-                }),
+                .border_type(BorderType::Rounded)
+                .padding(Padding::horizontal(1))
+                .title(Span::styled(label, Style::default().fg(border_color).add_modifier(Modifier::BOLD)))
+                .border_style(Style::default().fg(border_color)),
         )
         .wrap(Wrap { trim: true });
-    
-    // Add cursor position
-    if app.is_input_mode {
-        f.set_cursor(
-            area.x + 1 + app.cursor_position as u16,
-            area.y + 1,
-        );
-    }
 
     f.render_widget(input, area);
 
-    // Render cursor
     if app.is_input_mode {
-        f.set_cursor(
-            area.x + app.cursor_position as u16 + 1,
-            area.y + 1,
-        );
+        let before_cursor = &app.input_text[..app.cursor_position.min(app.input_text.len())];
+        let row = before_cursor.matches('\n').count() as u16;
+        let col = before_cursor.rsplit('\n').next().unwrap_or("").chars().count() as u16;
+        f.set_cursor_position((area.x + col + 2, area.y + 1 + row));
     }
 }
 
 fn render_messages(f: &mut Frame, area: Rect, app: &AppState) {
     let visible_height = area.height.saturating_sub(2) as usize; // Account for borders
-    
+
     // Get the messages to display based on scroll position
     let start_idx = app.message_scroll;
     let end_idx = (start_idx + visible_height).min(app.messages_expanded.len());
-    
+
     let visible_messages: Vec<ListItem> = if app.messages_expanded.is_empty() {
-        if app.messages.is_empty() {
-            vec![ListItem::new("No messages yet. Start by asking a question!".to_string())
-                .style(Style::default().fg(Color::Gray))]
-        } else {
-            app.messages
-                .iter()
-                .map(|msg| ListItem::new(msg.clone()))
-                .collect()
-        }
+        vec![ListItem::new(Line::from(Span::styled(
+            "  No activity yet — press 'i' and describe a code task.",
+            Style::default().fg(MUTED),
+        )))]
     } else {
         app.messages_expanded[start_idx..end_idx]
             .iter()
-            .enumerate()
-            .map(|(_, msg)| {
-                let style = if msg.contains("Error") || msg.contains("Failed") {
-                    Style::default().fg(Color::Red)
-                } else if msg.contains("Success") {
-                    Style::default().fg(Color::Green)
-                } else if msg.contains("Processing") {
-                    Style::default().fg(Color::Cyan)
+            .map(|msg| {
+                let (icon, color) = if msg.contains("Error") || msg.contains("Failed") {
+                    ("✗ ", ERR)
+                } else if msg.contains("Success") || msg.contains("Wrote") {
+                    ("✓ ", OK)
+                } else if msg.contains("Processing") || msg.contains("Working") {
+                    ("⚙ ", WARN)
                 } else {
-                    Style::default()
+                    ("· ", FG)
                 };
-                ListItem::new(msg.clone()).style(style)
+                ListItem::new(Line::from(vec![
+                    Span::styled(icon, Style::default().fg(color).add_modifier(Modifier::BOLD)),
+                    Span::styled(msg.clone(), Style::default().fg(color)),
+                ]))
             })
             .collect()
     };
 
-    // Create scroll indicators
-    let mut title = "Messages".to_string();
-    let mut scroll_indicators = String::new();
-    
+    let mut title = " Activity ".to_string();
     if app.messages_expanded.len() > visible_height {
         let total_lines = app.messages_expanded.len();
         let current_line = start_idx + 1;
         let end_line = end_idx;
-        title = format!("Messages ({}-{}/{})", current_line, end_line, total_lines);
-        
-        // Add scroll indicators
+        let mut indicators = String::new();
         if start_idx > 0 {
-            scroll_indicators.push_str("↑ ");
+            indicators.push('↑');
         }
         if end_idx < total_lines {
-            scroll_indicators.push_str("↓ ");
+            indicators.push('↓');
         }
-        
-        if !scroll_indicators.is_empty() {
-            title = format!("{} {}", title, scroll_indicators);
-        }
+        title = format!(" Activity ({}-{}/{}) {} ", current_line, end_line, total_lines, indicators);
     }
 
-    let messages_list = List::new(visible_messages)
-        .block(Block::default()
+    let messages_list = List::new(visible_messages).block(
+        Block::default()
             .borders(Borders::ALL)
-            .title(title)
-            .style(Style::default().fg(Color::Cyan)))
-        .style(Style::default().fg(Color::White));
+            .border_type(BorderType::Rounded)
+            .padding(Padding::horizontal(1))
+            .title(Span::styled(title, Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)))
+            .border_style(Style::default().fg(MUTED)),
+    );
 
     f.render_widget(messages_list, area);
 }
 
+fn render_status_bar(f: &mut Frame, area: Rect, app: &AppState) {
+    let (mode_label, mode_color) = if app.is_input_mode {
+        (" INSERT ", ACCENT_2)
+    } else {
+        (" NORMAL ", ACCENT)
+    };
+
+    let repo = if app.target_repo_path.is_empty() {
+        ".".to_string()
+    } else {
+        app.target_repo_path.clone()
+    };
+
+    let line = Line::from(vec![
+        Span::styled(mode_label, Style::default().fg(Color::Black).bg(mode_color).add_modifier(Modifier::BOLD)),
+        Span::styled(format!("  repo: {repo}  "), Style::default().fg(MUTED)),
+        Span::styled("·  'h' help  Ctrl+O details  'q' quit", Style::default().fg(MUTED)),
+    ]);
+
+    f.render_widget(Paragraph::new(line), area);
+}
+
+fn section(s: &str) -> Line<'static> {
+    Line::from(Span::styled(s.to_string(), Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)))
+}
+
+fn key(k: &str, desc: &str) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(format!("  {:<12}", k), Style::default().fg(ACCENT_2).add_modifier(Modifier::BOLD)),
+        Span::styled(desc.to_string(), Style::default().fg(FG)),
+    ])
+}
+
 fn render_help(f: &mut Frame) {
-    let help_text = vec![
-        "🚀 CodePilot - Multi-Agent MCP System",
-        "",
-        "Keyboard Navigation:",
-        "  ↑/↓/Tab  - Navigate between services",
-        "  ←/→      - Navigate between tools",
-        "  Space    - Toggle service expansion",
-        "  i        - Toggle input mode",
-        "  h        - Toggle this help screen",
-        "  Esc      - Exit current mode or quit",
-        "  Ctrl+C   - Press twice quickly to exit",
-        "",
-        "Message Scrolling:",
-        "  j/k       - Scroll messages down/up",
-        "  PageUp/Down - Scroll messages faster",
-        "  Home/End  - Jump to top/bottom of messages",
-        "",
-        "Services:",
-        "  🟢 Linear   - Project management",
-        "  🟢 GitHub   - Repository management", 
-        "  🟢 Supabase - Database operations",
-        "",
-        "Press 'h' or 'Esc' to return to main view",
+    let lines = vec![
+        Line::from(Span::styled(
+            "›› CodePilot — JS/TS coding agent",
+            Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        section("Task input"),
+        key("i", "describe a code task"),
+        key("Enter", "submit the task (input mode)"),
+        key("Shift+Enter", "insert a newline instead of submitting"),
+        Line::from(""),
+        section("Navigation"),
+        key("h", "toggle this help screen"),
+        key("Ctrl+O", "view edit detail (j/k or PageUp/Dn to browse history)"),
+        key("Esc", "exit current mode or quit"),
+        key("Ctrl+C", "press twice quickly to exit"),
+        Line::from(""),
+        section("Scrolling"),
+        key("j / k", "scroll messages down / up"),
+        key("PageUp/Dn", "scroll faster"),
+        key("Home/End", "jump to top / bottom"),
+        Line::from(""),
+        Line::from(Span::styled("Press 'h' or 'Esc' to return", Style::default().fg(MUTED))),
     ];
 
-    let help_paragraph = Paragraph::new(help_text.join("\n"))
-        .style(Style::default().fg(Color::White))
-        .block(Block::default().borders(Borders::ALL).title("📖 Help"))
-        .alignment(ratatui::layout::Alignment::Left);
+    let help_paragraph = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .padding(Padding::uniform(1))
+                .title(Span::styled(" Help ", Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)))
+                .border_style(Style::default().fg(ACCENT_2)),
+        )
+        .alignment(Alignment::Left);
 
-    f.render_widget(help_paragraph, f.size());
-} 
+    f.render_widget(help_paragraph, f.area());
+}
+
+fn detail_field(label: &str, value: String) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(format!("{label}: "), Style::default().fg(ACCENT_2).add_modifier(Modifier::BOLD)),
+        Span::styled(value, Style::default().fg(FG)),
+    ])
+}
+
+fn render_details(f: &mut Frame, app: &AppState) {
+    let footer = if app.edit_history.len() > 1 {
+        format!(
+            " {}/{} · j/k or PageUp/Dn to browse · Ctrl+O or Esc to close ",
+            app.detail_cursor + 1,
+            app.edit_history.len()
+        )
+    } else {
+        " Ctrl+O or Esc to close ".to_string()
+    };
+
+    let lines: Vec<Line> = match app.edit_history.get(app.detail_cursor) {
+        Some(detail) => {
+            let (status_text, status_color) = if detail.applied {
+                ("Applied", OK)
+            } else {
+                ("Rejected", ERR)
+            };
+
+            let mut lines = vec![
+                detail_field("Task", detail.task.clone()),
+                detail_field("File", detail.path.display().to_string()),
+                detail_field("Size", format!("{} bytes", detail.bytes)),
+                detail_field("Time", detail.timestamp.format("%Y-%m-%d %H:%M:%S UTC").to_string()),
+                Line::from(vec![
+                    Span::styled("Status: ", Style::default().fg(ACCENT_2).add_modifier(Modifier::BOLD)),
+                    Span::styled(status_text, Style::default().fg(status_color).add_modifier(Modifier::BOLD)),
+                ]),
+            ];
+            if let Some(verification) = &detail.verification {
+                lines.push(detail_field("Verification", verification.clone()));
+            }
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled("Content:", Style::default().fg(ACCENT_2).add_modifier(Modifier::BOLD))));
+            lines.extend(detail.content.lines().map(|l| Line::from(l.to_string())));
+            lines
+        }
+        None => vec![Line::from(Span::styled(
+            "No edits yet — run a task and its full file path + content will show up here.",
+            Style::default().fg(MUTED),
+        ))],
+    };
+
+    let body = Paragraph::new(lines)
+        .wrap(Wrap { trim: false })
+        .style(Style::default().fg(FG))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .padding(Padding::uniform(1))
+                .title(Span::styled(" Last Edit ", Style::default().fg(ACCENT).add_modifier(Modifier::BOLD)))
+                .title_bottom(Span::styled(footer, Style::default().fg(MUTED)))
+                .border_style(Style::default().fg(ACCENT_2)),
+        );
+
+    f.render_widget(body, f.area());
+}
