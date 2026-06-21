@@ -1,174 +1,73 @@
-
-
-#[derive(Debug, Clone)]
-pub enum ConnectionStatus {
-    Connected,
-    Failed(String),
-    Pending,
-    NotTested,
+/// A single completed edit, shown in the Ctrl+O detail view and persisted to
+/// `{save_state_dir}/history.jsonl` so it survives a restart.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct EditDetail {
+    pub task: String,
+    pub path: std::path::PathBuf,
+    pub content: String,
+    pub bytes: usize,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    /// `true` if the edit passed verification and was kept; `false` if it was
+    /// rejected and reverted. `#[serde(default)]` so history written before the
+    /// verification gate existed still loads.
+    #[serde(default = "default_applied")]
+    pub applied: bool,
+    /// Human-readable gate result, e.g. "tsc: passed" or "tsc: failed - <error>".
+    #[serde(default)]
+    pub verification: Option<String>,
 }
 
-#[derive(Debug, Clone)]
-pub struct Tool {
-    pub name: String,
-    pub description: String,
-    pub status: ConnectionStatus,
-}
-
-#[derive(Debug, Clone)]
-pub struct Service {
-    pub name: String,
-    pub tools: Vec<Tool>,
-    pub is_expanded: bool,
-    pub status: ConnectionStatus,
+fn default_applied() -> bool {
+    true
 }
 
 #[derive(Debug)]
 pub struct AppState {
-    pub services: Vec<Service>,
-    pub selected_service: usize,
-    pub selected_tool: Option<usize>,
     pub input_text: String,
     pub cursor_position: usize,
     pub is_input_mode: bool,
     pub messages: Vec<String>,
     pub is_processing: bool,
     pub show_help: bool,
-    pub service_scroll: Vec<usize>, // Scroll position for each service
     pub message_scroll: usize, // Scroll position for messages
     pub messages_expanded: Vec<String>, // Expanded messages with line wrapping
+    pub target_repo_path: String,
+    pub show_details: bool,
+    pub edit_history: Vec<EditDetail>,
+    pub detail_cursor: usize,
 }
 
 impl AppState {
     pub fn new() -> Self {
-        let services = vec![
-            Service {
-                name: "Linear".to_string(),
-                tools: vec![
-                    Tool {
-                        name: "LINEAR_CREATE_LINEAR_ISSUE".to_string(),
-                        description: "Create a new issue in Linear".to_string(),
-                        status: ConnectionStatus::NotTested,
-                    },
-                    Tool {
-                        name: "LINEAR_LIST_LINEAR_ISSUES".to_string(),
-                        description: "List all issues in Linear".to_string(),
-                        status: ConnectionStatus::NotTested,
-                    },
-                    Tool {
-                        name: "LINEAR_UPDATE_ISSUE".to_string(),
-                        description: "Update an existing issue".to_string(),
-                        status: ConnectionStatus::NotTested,
-                    },
-                ],
-                is_expanded: true,
-                status: ConnectionStatus::NotTested,
-            },
-            Service {
-                name: "GitHub".to_string(),
-                tools: vec![
-                    Tool {
-                        name: "GITHUB_CREATE_ISSUE".to_string(),
-                        description: "Create a new issue on GitHub".to_string(),
-                        status: ConnectionStatus::NotTested,
-                    },
-                    Tool {
-                        name: "GITHUB_LIST_ISSUES".to_string(),
-                        description: "List all issues in a repository".to_string(),
-                        status: ConnectionStatus::NotTested,
-                    },
-                    Tool {
-                        name: "GITHUB_CREATE_PULL_REQUEST".to_string(),
-                        description: "Create a new pull request".to_string(),
-                        status: ConnectionStatus::NotTested,
-                    },
-                ],
-                is_expanded: true,
-                status: ConnectionStatus::NotTested,
-            },
-            Service {
-                name: "Supabase".to_string(),
-                tools: vec![
-                    Tool {
-                        name: "SUPABASE_INSERT_RECORD".to_string(),
-                        description: "Insert a new record into database".to_string(),
-                        status: ConnectionStatus::NotTested,
-                    },
-                    Tool {
-                        name: "SUPABASE_SELECT_RECORDS".to_string(),
-                        description: "Select records from database".to_string(),
-                        status: ConnectionStatus::NotTested,
-                    },
-                    Tool {
-                        name: "SUPABASE_CREATE_TABLE".to_string(),
-                        description: "Create a new table in database".to_string(),
-                        status: ConnectionStatus::NotTested,
-                    },
-                ],
-                is_expanded: true,
-                status: ConnectionStatus::NotTested,
-            },
-        ];
-
         Self {
-            services,
-            selected_service: 0,
-            selected_tool: None,
             input_text: String::new(),
             cursor_position: 0,
             is_input_mode: false,
             messages: Vec::new(),
             is_processing: false,
             show_help: false,
-            service_scroll: vec![0, 0, 0], // Initialize scroll positions for 3 services
             message_scroll: 0,
             messages_expanded: Vec::new(),
+            target_repo_path: String::new(),
+            show_details: false,
+            edit_history: Vec::new(),
+            detail_cursor: 0,
         }
     }
 
-    pub fn toggle_service_expansion(&mut self) {
-        if let Some(service) = self.services.get_mut(self.selected_service) {
-            service.is_expanded = !service.is_expanded;
-        }
+    /// Record a new edit and point the detail view at it.
+    pub fn push_edit_detail(&mut self, detail: EditDetail) {
+        self.edit_history.push(detail);
+        self.detail_cursor = self.edit_history.len() - 1;
     }
 
-    pub fn next_service(&mut self) {
-        self.selected_service = (self.selected_service + 1) % self.services.len();
-        self.selected_tool = None;
+    pub fn show_older_detail(&mut self) {
+        self.detail_cursor = self.detail_cursor.saturating_sub(1);
     }
 
-    pub fn previous_service(&mut self) {
-        self.selected_service = if self.selected_service == 0 {
-            self.services.len() - 1
-        } else {
-            self.selected_service - 1
-        };
-        self.selected_tool = None;
-    }
-
-    pub fn next_tool(&mut self) {
-        if let Some(service) = self.services.get(self.selected_service) {
-            if service.is_expanded && !service.tools.is_empty() {
-                let tool_count = service.tools.len();
-                self.selected_tool = Some(
-                    self.selected_tool
-                        .map(|t| (t + 1) % tool_count)
-                        .unwrap_or(0),
-                );
-            }
-        }
-    }
-
-    pub fn previous_tool(&mut self) {
-        if let Some(service) = self.services.get(self.selected_service) {
-            if service.is_expanded && !service.tools.is_empty() {
-                let tool_count = service.tools.len();
-                self.selected_tool = Some(
-                    self.selected_tool
-                        .map(|t| if t == 0 { tool_count - 1 } else { t - 1 })
-                        .unwrap_or(tool_count - 1),
-                );
-            }
+    pub fn show_newer_detail(&mut self) {
+        if self.detail_cursor + 1 < self.edit_history.len() {
+            self.detail_cursor += 1;
         }
     }
 
@@ -179,34 +78,6 @@ impl AppState {
         self.messages.push(formatted_message);
         if self.messages.len() > 100 {
             self.messages.remove(0);
-        }
-    }
-
-    pub fn update_service_status(&mut self, service_index: usize, status: ConnectionStatus) {
-        if let Some(service) = self.services.get_mut(service_index) {
-            service.status = status.clone();
-            for tool in &mut service.tools {
-                tool.status = status.clone();
-            }
-        }
-    }
-
-    pub fn scroll_service_up(&mut self) {
-        if self.selected_service < self.service_scroll.len() {
-            let scroll = &mut self.service_scroll[self.selected_service];
-            if *scroll > 0 {
-                *scroll -= 1;
-            }
-        }
-    }
-
-    pub fn scroll_service_down(&mut self) {
-        if self.selected_service < self.service_scroll.len() {
-            let scroll = &mut self.service_scroll[self.selected_service];
-            let service = &self.services[self.selected_service];
-            if service.is_expanded && *scroll < service.tools.len().saturating_sub(5) {
-                *scroll += 1;
-            }
         }
     }
 
@@ -238,10 +109,10 @@ impl AppState {
         if width < 20 {
             return vec![message.to_string()];
         }
-        
+
         let mut wrapped = Vec::new();
         let lines: Vec<&str> = message.lines().collect();
-        
+
         for line in lines {
             if line.len() <= width {
                 wrapped.push(line.to_string());
@@ -249,7 +120,7 @@ impl AppState {
                 // Handle long lines by breaking at word boundaries
                 let words: Vec<&str> = line.split_whitespace().collect();
                 let mut current_line = String::new();
-                
+
                 for word in words {
                     if current_line.is_empty() {
                         current_line = word.to_string();
@@ -261,18 +132,18 @@ impl AppState {
                         current_line = word.to_string();
                     }
                 }
-                
+
                 if !current_line.is_empty() {
                     wrapped.push(current_line);
                 }
             }
         }
-        
+
         // If no lines were created, return the original message
         if wrapped.is_empty() {
             wrapped.push(message.to_string());
         }
-        
+
         wrapped
     }
 }

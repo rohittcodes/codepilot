@@ -1,6 +1,6 @@
 # CodePilot
 
-A powerful, multi-agent CLI tool that orchestrates AI agents to interact with Linear, GitHub, and Supabase through Model Context Protocol (MCP) servers with an integration layer powered by [Composio](https://composio.dev).
+A powerful, multi-agent CLI tool that orchestrates AI agents to interact with Linear, GitHub, and Supabase through Model Context Protocol (MCP) servers.
 
 ## Overview
 

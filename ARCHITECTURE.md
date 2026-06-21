@@ -39,9 +39,9 @@ graph TB
 
     %% MCP Layer
     subgraph "MCP Layer"
-        LinearMCP[Linear MCP Server<br/>Composio]
-        GitHubMCP[GitHub MCP Server<br/>Composio]
-        SupabaseMCP[Supabase MCP Server<br/>Composio]
+        LinearMCP[Linear MCP Server]
+        GitHubMCP[GitHub MCP Server]
+        SupabaseMCP[Supabase MCP Server]
     end
 
     %% External Services
@@ -147,9 +147,9 @@ graph LR
 
     %% MCP Servers
     subgraph "MCP Servers"
-        LinearMCP[Linear MCP<br/>Composio Server]
-        GitHubMCP[GitHub MCP<br/>Composio Server]
-        SupabaseMCP[Supabase MCP<br/>Composio Server]
+        LinearMCP[Linear MCP Server]
+        GitHubMCP[GitHub MCP Server]
+        SupabaseMCP[Supabase MCP Server]
     end
 
     %% Flow Connections
@@ -238,7 +238,6 @@ graph TB
         Linear[Linear<br/>Project Management]
         GitHub[GitHub<br/>Repository Management]
         Supabase[Supabase<br/>Database]
-        Composio[Composio<br/>MCP Servers]
     end
 
     %% Dependencies
@@ -258,7 +257,6 @@ graph TB
     Reqwest --> Linear
     Reqwest --> GitHub
     Reqwest --> Supabase
-    Reqwest --> Composio
 
     %% Styling
     classDef coreTech fill:#ff6b6b,stroke:#333,stroke-width:2px,color:#fff
@@ -273,7 +271,7 @@ graph TB
     class Swarms,OpenAI aiTech
     class Reqwest,SerdeJson networkTech
     class Dotenv,Chrono configTech
-    class Linear,GitHub,Supabase,Composio externalService
+    class Linear,GitHub,Supabase externalService
 ```
 
 ## Data Flow Architecture
